@@ -1,12 +1,9 @@
 # import python libraries
 print('Importing dependencies...')
-import glob
-import math
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from moviepy.editor import VideoFileClip
-from IPython.display import HTML
 # import project dependencies
 import functions as fn
 from classes import undistorter, transformer, laneFinder

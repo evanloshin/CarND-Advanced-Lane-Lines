@@ -1,6 +1,4 @@
 # import python libraries
-import glob
-import math
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt

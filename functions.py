@@ -1,11 +1,8 @@
 # import python libraries
 import glob
-import math
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
-# import project dependencies
-from classes import undistorter, transformer, laneFinder
 
 ### grab images from a directory
 ### returns np array of images
