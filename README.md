@@ -35,62 +35,68 @@ The software pipeline interprets raw front-facing camera footage and calculates 
 [image6]: ./examples/example_output.jpg "Output"
 [video1]: ./project_video.mp4 "Video"
 
-### Approach
-
-My summary goes here
+[img1]: ./output_images/detect_corners.png
+[img2]: ./output_images/undistort.png
+[img3]: ./output_images/colorspaces.png
+[img4]: ./output_images/sobels.png
+[img5]: ./output_images/combined_binary.png
+[img6]: ./output_images/plot_mask.png
+[img7]: ./output_images/warped.png
 
 ### Camera Calibration
 
-Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
+Recognizing this is a relatively larger project, I begin by defining a class `undistorter()` in [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py) to store calibration related parameters for recalling later. Here I pass in the number of chessboard corners to create an array `ObjPts` of desired (x,y,z) coordinates where z=0. I also create an array `ImgPts` for holding 2D coordinates of the corners as they appear in the image.
 
-The code for this step is contained in the first code cell of the IPython notebook located in "./examples/example.ipynb" (or in lines # through # of the file called `some_file.py`).  
+Iterating through an array of provided chessboard images, `cv2.findChessboardCorners()` identifies the coordinates for storing in `ImgPts`. Note, converting each image to grayscale is performed first as a prerequisite. Here is just how accurately that function performs corner recognition.
 
-I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objp` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.  
+![img1]
 
-I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function and obtained this result: 
+Then, passing `ObjPts` and `ImgPts` to the function `cv2.calibrateCamera()` produces the two essential elements for undistorting images, the **camera matrix** and **distortion coefficients**. I store these as object attributes for recalling later in my method `undistort()`. This method uses the function `cv2.undistort` to remove the artificial *curviness* today's cameras induce.
 
-![alt text][image1]
+Here's examples of removing distortion on chessboards as well as driving imagery. The difference is a bit harder to discern in the lower images. Nonetheless, this step is important for describing lanes with precise mathematical geometry used downstream to control the vehicle.
 
-Provide an example of a distortion-corrected image.
-
-To demonstrate this step, I will describe how I apply the distortion correction to one of the test images like this one:
-![alt text][image2]
+![img2]
 
 ### Binary Image
 
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+In this pivotal step, I create and tune a function to single out lane lines using color spaces and gradients. Many options for combining different color spaces and gradients exist. An intelligent approach would use machine learning to identify a good set of parameters that generalize well to multiple road conditions. However, I went for a more expedient method for now due to time constraints (full-time job, wedding planning, life, etc.).
 
-![alt text][image3]
+`binarize()` in [functions.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/functions.py) first converts the image from RGB color space to HLS and HSV. The two channels that seemed to accentuate lane lines the most are saturation in HLS and value in HSV, so I isolate those.
+
+![img3]
+
+The pipeline also takes the horizontal and vertical color gradients in a grayscale image to lend additional parameters for lane extraction. I take the absolute value of gradient pixels and rescale them to span the range 0-255 as shown.
+
+![img4]
+
+Finally, I transform each of the above into binary images, where pixel values between my chosen thresholds are coded as *1* and all others are *0*. Then, I combine the binary images using logical operators. Keeping all the activated gradient pixels (sobelx and sobely) while taking overlapping saturation and value pixels seems to yield the best result.
+
+`(sobelx_binary == 1) OR (sobely_binary == 1) OR ((saturation_binary == 1) AND (value_binary == 1))`
+
+The two images below visualizes the effectiveness of the combined binary image (right) in isolating lane pixels, where white represents activated pixels. The next section takes care of eliminating most activated non-pavement scenery.
+
+![img5]
 
 ### perspective transform
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
+The code for my perspective transform is found in a class named `transformer()`, which begins at line 47 of [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py) The constructor takes as inputs an image, as well as source points `pts`, horizontal offset `x_offset` and vertical offset `y_offset`. I wrote the utility method `plot_mask()` to make hard coding the source points easier by visualize them as follows.
+
+![img6]
+
+The method `create_transformation()` automatically calculates 4 corresponding destination points `dst` for the top-down transformation using the image size and hard coded offsets defined in the constructor. 
 
 ```python
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
+dst = np.float32([[self.x, self.y],
+                  [img_size[1] - self.x, self.y],
+                  [img_size[1] - self.x, img_size[0] - self.y],
+                  [self.x, img_size[0] - self.y]])
 ```
 
-This resulted in the following source and destination points:
+I pass the source and destination points to `cv2.getPerspectiveTransform()`, which returns a transformation matrix used to warp pipeline images in the method `warp()`. I also use the same two parameters to create an inverse transformation matrix for the method `unwarp()`.
 
-| Source        | Destination   | 
-|:-------------:|:-------------:| 
-| 585, 460      | 320, 0        | 
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
+I used `plot_mask()` and trial and error to pick source points and offsets that produce parallel lane lines like those below.
 
-I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
-
-![alt text][image4]
+![img7]
 
 ### Lane Detection
 
