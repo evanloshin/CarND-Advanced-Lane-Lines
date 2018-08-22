@@ -4,12 +4,13 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from moviepy.editor import VideoFileClip
+import sys
 # import project dependencies
 import functions as fn
 from classes import undistorter, transformer, laneFinder
 
 
-def main():
+def main(argv):
 
     ######################## HYPERPARAMETERS ########################
     nx_corners = 9  # number of chessboard corners in horizontal direction
@@ -27,6 +28,15 @@ def main():
     smooth_factor = 8  # moving average period for last n polynomial fits
     max_diff = 50  # allowable percent difference between new and previous coefficients
     ###################### END HYPERPARAMETERS ######################
+
+    # take video i/o filenames from terminal
+    try:
+        input_file = argv[1]
+        output_file = argv[2]
+    except IndexError:
+        print("Invalid arguments passed to main.py. Using default i/o filenames.")
+        input_file = 'test_videos/project_video.mp4'
+        output_file = 'output_videos/output_project_video.mp4'
 
     # package up hyperparameters for passing to video pipeline
     hyperparameters = [n_windows, window_width, min_pix, curve_margin, smooth_factor, max_diff]
@@ -61,13 +71,13 @@ def main():
     lanes.generate_unit_conversion(binarized)
 
     # generate video
-    output_file = 'output_videos/output_project_video.mp4'
+    output_file = 'output_videos/output_project_video_test.mp4'
     input_file = 'test_videos/project_video.mp4'
-    clip = VideoFileClip(input_file)#.subclip(5, 12)
+    clip = VideoFileClip(input_file).subclip(5, 7)
     result = clip.fl_image(lambda frame: fn.video_pipeline(frame, undist, txf, thresholds, lanes, hyperparameters))
     result.write_videofile(output_file, audio=False)
 
     # result = fn.video_pipeline(Examples[0], undist, txf, thresholds, lanes, hyperparameters)
     # plt.imsave('test.png', result)
 
-if __name__ == '__main__': main()
+if __name__ == '__main__': main(sys.argv[1:])
