@@ -202,10 +202,7 @@ class laneFinder():
     ### calculate radius of lane curvature for most recent fit
     ### return radius in meters
     def get_radius(self):
-        # r_left = self.left_lane.calc_radius(self.my)
-        # r_right = self.right_lane.calc_radius(self.my)
-        # return (r_left + r_right) / 2
-        coeff = np.polyfit(self.left_lane.plot_y, self.middle_x, 2)
+        coeff = np.average((self.left_lane.last_coeff, self.right_lane.last_coeff), axis=0)
         y_eval = np.max(self.left_lane.plot_y)
         r = ((1 + (2 * coeff[0] * y_eval * self.my + coeff[1]) ** 2) ** 1.5) / abs(
             2 * coeff[0])
@@ -320,15 +317,3 @@ class lane():
                 return window_x
         else:
             return window_x
-
-
-    ### calculate the radius
-    ### returns radius in meters
-    def calc_radius(self, ym_per_pix):
-        y_eval = np.max(self.plot_y)
-        r = ((1 + (2*self.last_coeff[0]*y_eval*ym_per_pix + self.last_coeff[1])**2)**1.5) / np.absolute(2*self.last_coeff[0])
-        self.R.insert(0, r)
-        if len(self.R) > self.period:
-            del(self.R[-1])
-        r_avg = np.average(self.R)
-        return r_avg
