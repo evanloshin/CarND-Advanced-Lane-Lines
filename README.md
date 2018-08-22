@@ -42,6 +42,9 @@ My software pipeline interprets raw front-facing camera footage and calculates l
 [img5]: ./output_images/combined_binary.png
 [img6]: ./output_images/plot_mask.png
 [img7]: ./output_images/warped.png
+[img8]: ./output_images/sliding_windows.png
+[img9]: ./output_images/r_eq.png
+[img10]: ./output_images/final_image.png
 
 ### Camera Calibration
 
@@ -75,11 +78,12 @@ I transform each of the above into binary images, where pixel values between my 
 |:--------:|:----------:|:-----:|:----------:|:----------:|
 |  **Low** |     60     |   40  |     20     |     35     |
 | **High** |     255    |  255  |     255    |     255    |
-|          |            |       |            |            |
 
 Then, I combine the binary images using logical operators. Keeping all the activated gradient pixels (sobelx and sobely) while taking overlapping saturation and value pixels seems to yield the best result.
 
-`(sobelx_binary == 1) OR (sobely_binary == 1) OR ((saturation_binary == 1) AND (value_binary == 1))`
+```python
+(sobelx_binary == 1) OR (sobely_binary == 1) OR ((saturation_binary == 1) AND (value_binary == 1))
+```
 
 The two images below visualizes the effectiveness of the combined binary image (right) in isolating lane pixels, where white represents activated pixels. The next section takes care of eliminating most activated non-pavement scenery.
 
@@ -108,28 +112,38 @@ I used `plot_mask()` and trial and error to pick source points and offsets that 
 
 ### Lane Detection
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+A sliding window technique is used to identify lane pixels in the rectified binary image. The code for this can be found in lines 132-199 of [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py). The method `find_lanes()` takes a histogram of the bottom half of each image to get the frequency of activated pixels with respect to the horizontal axis. The x-value of the maximum frequencies on the left and right hand sides gives me the lanes' beginning center points. From here, I grab all pixels within a 150x80 rectangular area. If more than 40 pixels exist in the area, the subsequent rectangle's horizontal position is adjusted to the mean x-value of those pixels. The hyperparameters mentioned are `window_width`, `n_windows`, and `minpix`, which are defined near the top of [main.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/main.py).
 
-![alt text][image5]
+![img8]
+
+Two unique aspects of my lane detection pipeline made significant contributions to overall performance. First, `find_lanes()` calls the `verify_window` method of the `lane()` class each sliding window. This method confirms the next window's horizontal position fell within a user-defined margin of the last n best fit lane lines, otherwise it overrides the proposed position to protect against misleading groups of activated pixels. The second safeguard is keeping a history of the last n detected lane pixels. Lines 282-283 of [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py) store these pixel coordinates in class attributes `self.historical_x` and `self.historical_y`.
+
+Finally, the method `fit_curve()` on line 278 of [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py) calculates the best-fit second degree polynomial coefficients of the detected pixels over the last n video frames.
 
 ### Situational Awareness Measurements
 
-I did this in lines # through # in my code in `my_other_file.py`
+The **radius of curvature** is measured in the method `get_radius()` of my `lane_finder()` class on line 204. It starts with simply taking an average of the left and right lane polynomial coefficients to get those of a hypothetical center lane. While I didn't work out the proof, I did test that the averaged coefficients exactly equaled those taken using `cv2.polyfit()` on a new set of line points `left_x + (right_x - left_x) / 2`.
 
-### Overlay Output
+Then, I plug the coefficients into the radius of curvature equation below ([derivation here](https://www.intmath.com/applications-differentiation/8-radius-curvature.php)). Finally, pixels are converted to meters based on the ratio of the pixel distance to the typical U.S. highway lane distance of 3.7 meters - see `generate_unit_conversion()` on line 120 of `classes.py`.
 
-I implemented this step in lines # through # in my code in `yet_another_file.py` in the function `map_lane()`.  Here is an example of my result on a test image:
+ ![img9]
 
-![alt text][image6]
+The **distance from center** is measured in `get_center_distance()` on line 244 in [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py) with a bit less rigor than above. I take the difference between the center of the lanes measured at max(y) and the center of the perspective transformed image, then convert pixels to meters. This is less rigorous because the horizontal center of the transformed image is not exactly equal to that of the original. This is one area of opportunity for improving my project.
+
+### Final Output
+
+The method `project_lines()` on line 215 of [classes.py](https://github.com/evanloshin/CarND-Advanced-Lane-Lines/blob/master/classes.py) unwarps the highlighted lane lines and filled area back onto the original image. This uses the inverse transformation matrix M_inv calculated earlier and the same `cv2.perspectivetransform` function. I do some iterating on the detected pixels in lines 229-234 to make them more visually apparent in the result.
+
+Finally, I produce the following result after some text and picture-in-picture overlay in the `video_pipeline()` function.
+
+![img10]
 
 ---
 
 ### Conclusion
 
-Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (wobbly lines are ok but no catastrophic failures that would cause the car to drive off the road!).
+Here's a [link to my video result](./output_videos/output_project_video.mp4).
 
-Here's a [link to my video result](./project_video.mp4)
+Overall, the project successfully detects the lanes throughout the entire video with only slight aberrations in the shaded portion. It is the result of several iterations, ideas, and missteps. I learned a lot of lessons, from starting over in PyCharm after frustration writing object-oriented code in a jupyter notebook to brainstorming a more robust smoothing technique than averaging the last *n* polynomial coefficients.
 
-Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
-
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+Personally, the **most valuable takeaway** is understanding first-hand the challenges with generalizing algorithms to perform in unseen and highly variable driving environments. I am humbled by this pipeline's marginal detection in the two challenge videos. I look forward to learning techniques others applied in this project and revisiting it with new knowledge, as time permits. I see several ways for neural networks to enhance or replace these techniques given well-labeled training data. I could even see using genetic algorithms just to tune color thresholds. There are so many dials to turn with this project, and I learned plenty experimenting with just a handful of them.
